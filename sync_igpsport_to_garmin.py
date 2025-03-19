@@ -29,7 +29,7 @@ logger = logging.getLogger("igpsport-to-garmin")
 # Constants
 LAST_SYNC_FILE = "last_sync_date.json"
 OVERLAP_BUFFER_MINUTES = 5  # Consider activities overlapping if within 5 minutes
-GARMIN_SESSION_FILE = "garmin_session.json"  # File to store Garmin session data
+GARMIN_SESSION_DIR = "garmin_session"  # Dir to store Garmin session data
 
 class IGPSportClient:
     """Client for the iGPSport API."""
@@ -180,41 +180,35 @@ class GarminClient:
             logger.error(f"Error authenticating with Garmin Connect: {e}")
             self.authenticated = False
             return False
-    
+        
     def _save_session(self) -> bool:
-        """Save the current Garmin session to a file."""
+        """Save the current Garmin session to a directory."""
         try:
-            session_data = garth.save()
-            with open(GARMIN_SESSION_FILE, "w") as f:
-                json.dump(session_data, f)
-            logger.info("Garmin session saved to cache")
+            os.makedirs(GARMIN_SESSION_DIR, exist_ok=True)
+            garth.save(GARMIN_SESSION_DIR)
+            logger.info(f"Garmin session saved to directory: {GARMIN_SESSION_DIR}")
             return True
         except Exception as e:
             logger.error(f"Error saving Garmin session: {e}")
             return False
     
     def _load_session(self) -> bool:
-        """Load a saved Garmin session."""
+        """Load a saved Garmin session from directory."""
         try:
-            if not os.path.exists(GARMIN_SESSION_FILE):
-                logger.info("No saved Garmin session found in cache")
+            if not os.path.exists(GARMIN_SESSION_DIR) or not os.path.isdir(GARMIN_SESSION_DIR):
+                logger.info("No saved Garmin session directory found")
                 return False
-            
-            with open(GARMIN_SESSION_FILE, "r") as f:
-                session_data = json.load(f)
-                
-            garth.resume(session_data)
-            
-            # Verify that the session is still valid
+
+            garth.resume(GARMIN_SESSION_DIR)
+
             try:
-                # Make a simple API call to verify the session
-                garth.connectapi("/userprofile-service/userprofile")
+                garth.client.username
                 logger.info("Loaded Garmin session is valid")
                 return True
-            except Exception:
-                logger.info("Loaded Garmin session is invalid or expired, will create new session")
+            except Exception as e:
+                logger.info(f"Loaded Garmin session is invalid or expired: {e}")
                 return False
-                
+                    
         except Exception as e:
             logger.error(f"Error loading Garmin session: {e}")
             return False
@@ -441,12 +435,11 @@ def main():
     garmin_domain = os.environ.get("GARMIN_DOMAIN") or "garmin.com"
     
     # Log the session file location for debugging
-    logger.info(f"Garmin session file location: {os.path.abspath(GARMIN_SESSION_FILE)}")
-    if os.path.exists(GARMIN_SESSION_FILE):
-        file_size = os.path.getsize(GARMIN_SESSION_FILE)
-        logger.info(f"Garmin session file exists, size: {file_size} bytes")
+    logger.info(f"Garmin session directory location: {os.path.abspath(GARMIN_SESSION_DIR)}")
+    if os.path.exists(GARMIN_SESSION_DIR):
+        logger.info(f"Garmin session directory exists")
     else:
-        logger.info("Garmin session file does not exist yet")
+        logger.info("Garmin session directory does not exist yet")
     
     if not all([igpsport_username, igpsport_password, garmin_email, garmin_password, garmin_domain]):
         logger.error("Missing required environment variables")
